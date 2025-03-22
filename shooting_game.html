@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html>
+<head lang="ja">
+    <title>Space Shooting Game</title>
+    <style>
+        canvas {
+            border: 1px solid black;
+            display: block;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // プレイヤーの設定（戦闘機）
+        const player = {
+            x: canvas.width / 2,
+            y: canvas.height - 50,
+            width: 40,
+            height: 40,
+            speed: 5,
+            bullets: []
+        };
+
+        // ゲーム状態
+        let score = 0;
+        let level = 1;
+        let enemiesDefeated = 0;
+        const enemiesPerLevel = 10;
+
+        // 敵の設定（インベーダー）
+        const enemies = [];
+        let enemySpeed = 2;
+        let spawnRate = 0.02;
+
+        // 爆発エフェクトの設定
+        const explosions = [];
+
+        // 星の設定
+        const stars = [];
+        for (let i = 0; i < 100; i++) {
+            stars.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                size: Math.random() * 2 + 1,
+                speed: Math.random() * 0.5 + 0.1
+            });
+        }
+
+        // アニメーション用カウンター
+        let animationFrame = 0;
+
+        // キー入力の状態
+        const keys = {
+            left: false,
+            right: false,
+            space: false
+        };
+
+        // キーイベントの処理
+        document.addEventListener('keydown', (e) => {
+            switch(e.key) {
+                case 'ArrowLeft': keys.left = true; break;
+                case 'ArrowRight': keys.right = true; break;
+                case ' ': keys.space = true; break;
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            switch(e.key) {
+                case 'ArrowLeft': keys.left = false; break;
+                case 'ArrowRight': keys.right = false; break;
+                case ' ': keys.space = false; break;
+            }
+        });
+
+        // 弾の発射（2箇所から）
+        function shoot() {
+            if (keys.space) {
+                // 左翼からの弾
+                player.bullets.push({
+                    x: player.x + player.width * 0.25, // 左翼の位置
+                    y: player.y,
+                    width: 4,
+                    height: 10,
+                    speed: 7
+                });
+                // 右翼からの弾
+                player.bullets.push({
+                    x: player.x + player.width * 0.75, // 右翼の位置
+                    y: player.y,
+                    width: 4,
+                    height: 10,
+                    speed: 7
+                });
+            }
+        }
+
+        // 敵の生成
+        function spawnEnemy() {
+            if (Math.random() < spawnRate) {
+                enemies.push({
+                    x: Math.random() * (canvas.width - 40),
+                    y: 0,
+                    width: 40,
+                    height: 40,
+                    speed: enemySpeed
+                });
+            }
+        }
+
+        // レベルアップのチェック
+        function checkLevelUp() {
+            if (enemiesDefeated >= enemiesPerLevel) {
+                level++;
+                enemiesDefeated = 0;
+                enemySpeed += 0.5;
+                spawnRate += 0.005;
+                enemySpeed = Math.min(enemySpeed, 6);
+                spawnRate = Math.min(spawnRate, 0.1);
+            }
+        }
+
+        // 衝突判定
+        function checkCollision(rect1, rect2) {
+            return rect1.x < rect2.x + rect2.width &&
+                   rect1.x + rect1.width > rect2.x &&
+                   rect1.y < rect2.y + rect2.height &&
+                   rect1.y + rect1.height > rect2.y;
+        }
+
+        // 爆発の生成（1個のみ）
+        function createExplosion(x, y) {
+            explosions.push({
+                x: x,
+                y: y,
+                radius: 15,
+                maxRadius: 150,
+                life: 35
+            });
+        }
+
+        // 背景の描画
+        function drawBackground() {
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, '#000033');
+            gradient.addColorStop(1, '#000066');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = 'white';
+            stars.forEach(star => {
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+                ctx.fill();
+                star.y += star.speed;
+                if (star.y > canvas.height) {
+                    star.y = 0;
+                    star.x = Math.random() * canvas.width;
+                }
+            });
+        }
+
+        // 戦闘機（プレイヤー）の描画（翼と銃口付き）
+        function drawPlayer(x, y, width, height) {
+            ctx.fillStyle = 'silver';
+            ctx.beginPath();
+            // 本体
+            ctx.moveTo(x + width / 2, y);
+            ctx.lineTo(x, y + height);
+            ctx.lineTo(x + width, y + height);
+            ctx.closePath();
+            ctx.fill();
+
+            // 翼（左右に追加）
+            ctx.beginPath();
+            ctx.moveTo(x, y + height * 0.8); // 左翼の基点
+            ctx.lineTo(x - width * 0.5, y + height * 0.6); // 左翼の先端
+            ctx.lineTo(x, y + height * 0.4); // 左翼の戻り
+            ctx.moveTo(x + width, y + height * 0.8); // 右翼の基点
+            ctx.lineTo(x + width * 1.5, y + height * 0.6); // 右翼の先端
+            ctx.lineTo(x + width, y + height * 0.4); // 右翼の戻り
+            ctx.fill();
+
+            // コックピット
+            ctx.fillStyle = 'cyan';
+            ctx.fillRect(x + width / 2 - 5, y + 10, 10, 10);
+
+            // 銃口（左右の翼に）
+            ctx.fillStyle = 'gray';
+            ctx.fillRect(x + width * 0.25 - 2, y - 5, 4, 5); // 左銃口
+            ctx.fillRect(x + width * 0.75 - 2, y - 5, 4, 5); // 右銃口
+        }
+
+        // インベーダー（敵）の描画（赤色、上下逆）
+        function drawEnemy(x, y, width, height) {
+            ctx.fillStyle = 'red';
+            ctx.beginPath();
+            ctx.rect(x, y, width, height * 0.4);
+            ctx.rect(x + width * 0.2, y + height * 0.4, width * 0.6, height * 0.4);
+            ctx.fill();
+            ctx.fillStyle = 'white';
+            ctx.fillRect(x + width * 0.25, y + height * 0.45, width * 0.15, height * 0.15);
+            ctx.fillRect(x + width * 0.6, y + height * 0.45, width * 0.15, height * 0.15);
+
+            ctx.strokeStyle = 'red';
+            ctx.lineWidth = 2;
+            const legOffset = Math.sin(animationFrame * 0.1) * 5;
+            const legLength = height * 1.5;
+            ctx.beginPath();
+            ctx.moveTo(x + width * 0.2, y + height * 0.8);
+            ctx.lineTo(x + width * 0.2 + legOffset, y + height * 0.8 + legLength);
+            ctx.moveTo(x + width * 0.8, y + height * 0.8);
+            ctx.lineTo(x + width * 0.8 - legOffset, y + height * 0.8 + legLength);
+            ctx.stroke();
+        }
+
+        // 爆発の描画と更新
+        function drawExplosions() {
+            explosions.forEach((explosion, index) => {
+                ctx.beginPath();
+                ctx.arc(explosion.x, explosion.y, explosion.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 165, 0, ${explosion.life / 20})`;
+                ctx.fill();
+
+                explosion.radius += 1;
+                explosion.life--;
+                if (explosion.life <= 0 || explosion.radius >= explosion.maxRadius) {
+                    explosions.splice(index, 1);
+                }
+            });
+        }
+
+        // ゲームループ
+        function gameLoop() {
+            drawBackground();
+
+            animationFrame++;
+
+            if (keys.left && player.x > 0) player.x -= player.speed;
+            if (keys.right && player.x < canvas.width - player.width) player.x += player.speed;
+
+            shoot();
+            player.bullets.forEach((bullet, index) => {
+                bullet.y -= bullet.speed;
+                if (bullet.y < 0) player.bullets.splice(index, 1);
+            });
+
+            spawnEnemy();
+            enemies.forEach((enemy, enemyIndex) => {
+                enemy.y += enemy.speed;
+
+                player.bullets.forEach((bullet, bulletIndex) => {
+                    if (checkCollision(bullet, enemy)) {
+                        createExplosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
+                        enemies.splice(enemyIndex, 1);
+                        player.bullets.splice(bulletIndex, 1);
+                        score += 10;
+                        enemiesDefeated++;
+                        checkLevelUp();
+                    }
+                });
+
+                if (checkCollision(player, enemy)) {
+                    alert(`Game Over! Final Score: ${score} - Reached Level: ${level}`);
+                    enemies.length = 0;
+                    player.bullets.length = 0;
+                    score = 0;
+                    level = 1;
+                    enemiesDefeated = 0;
+                    enemySpeed = 2;
+                    spawnRate = 0.02;
+                }
+
+                if (enemy.y > canvas.height) enemies.splice(enemyIndex, 1);
+            });
+
+            drawPlayer(player.x, player.y, player.width, player.height);
+
+            ctx.fillStyle = 'yellow';
+            player.bullets.forEach(bullet => {
+                ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+            });
+
+            enemies.forEach(enemy => {
+                drawEnemy(enemy.x, enemy.y, enemy.width, enemy.height);
+            });
+
+            drawExplosions();
+
+            ctx.fillStyle = 'white';
+            ctx.font = '20px Arial';
+            ctx.fillText(`Score: ${score}`, 10, 30);
+            ctx.fillText(`Level: ${level}`, 10, 60);
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>
